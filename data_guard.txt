@@ -1,0 +1,83 @@
+ALTER SYSTEM SET LOG_ARCHIVE_CONFIG='DG_CONFIG=(DB01_PRIM,DB01_STDBY)';
+
+ALTER SYSTEM SET LOG_ARCHIVE_DEST_1='location=USE_DB_RECOVERY_FILE_DEST VALID_FOR=(ALL_LOGFILES,ALL_ROLES) DB_UNIQUE_NAME=DB01_PRIM';
+ALTER SYSTEM SET LOG_ARCHIVE_DEST_STATE_1=ENABLE;
+
+ALTER SYSTEM SET LOG_ARCHIVE_DEST_2='SERVICE=DB01_STDBY NOAFFIRM ASYNC REOPEN=30 VALID_FOR=(ONLINE_LOGFILES,PRIMARY_ROLE) DB_UNIQUE_NAME=DB01_STDBY';
+ALTER SYSTEM SET LOG_ARCHIVE_DEST_STATE_2=DEFER;
+
+ALTER DATABASE SET STANDBY DATABASE TO MAXIMIZE PERFORMANCE;
+
+ALTER SYSTEM SET FAL_SERVER='DB01_STDBY';
+ALTER SYSTEM SET FAL_CLIENT='DB01_PRIM';
+ALTER SYSTEM SET DB_FILE_NAME_CONVERT='/DB01_STDBY/','/DB01_PRIM/' SCOPE=SPFILE;
+ALTER SYSTEM SET LOG_FILE_NAME_CONVERT='/DB01_STDBY/','/DB01_PRIM/' SCOPE=SPFILE;
+
+ALTER SYSTEM SET STANDBY_FILE_MANAGEMENT=AUTO;
+
+
+*.audit_file_dest='/u01/app/oracle/admin/db01/adump'
+*.audit_trail='db'
+*.compatible='12.1.0.2.0'
+*.control_files='+DATA/DB01_STDBY/CONTROLFILE/current.268.1153513579','+FRA/DB01_STDBY/CONTROLFILE/current.262.1153513579'
+*.db_block_size=8192
+*.db_create_file_dest='+DATA'
+*.db_create_online_log_dest_1='+DATA'
+*.db_create_online_log_dest_2='+FRA'
+*.db_domain='world'
+*.db_file_name_convert='/DB01_PRIM/','/DB01_STDBY/'
+*.db_name='db01'
+*.db_recovery_file_dest='+FRA'
+*.db_recovery_file_dest_size=18000m
+*.db_unique_name='db01_prim'
+*.db_writer_processes=4
+*.diagnostic_dest='/u01/app/oracle'
+*.dispatchers='(PROTOCOL=TCP) (SERVICE=db01XDB)'
+*.fal_server='DB01_PRIM'
+*.fal_client='DB01_STDBY'
+*.filesystemio_options='SETALL'
+*.log_archive_config='DG_CONFIG=(DB01_PRIM,DB01_STDBY)'
+*.log_archive_dest_1='location=USE_DB_RECOVERY_FILE_DEST VALID_FOR=(ALL_LOGFILES,ALL_ROLES) DB_UNIQUE_NAME=DB01_STDBY'
+*.log_archive_dest_2='SERVICE=DB01_PRIM NOAFFIRM ASYNC REOPEN=30 VALID_FOR=(ONLINE_LOGFILES,PRIMARY_ROLE) DB_UNIQUE_NAME=DB01_PRIM'
+*.log_archive_dest_state_1='ENABLE'
+*.log_archive_dest_state_2='DEFER'
+*.log_file_name_convert='/DB01_PRIM/','/DB01_STDBY/'
+*.open_cursors=300
+*.parallel_threads_per_cpu=1
+*.pga_aggregate_target=500m
+*.processes=300
+*.remote_login_passwordfile='EXCLUSIVE'
+*.sga_target=2000m
+*.standby_file_management='AUTO'
+*.undo_tablespace='UNDOTBS1'
+
+
+
+
+
+
+
+srvctl add database -d db01_stdby -oraclehome /u01/app/oracle/product/19.21/db_1 -domain world -role physical_standby -spfile '+DATA/db01/spfiledb01.ora' -startoption OPEN -dbname db01 -instance db01 -diskgroup "DATA,FRA"
+
+echo "spfile='+DATA/db01/spfiledb01.ora'" > $ORACLE_HOME/dbs/initdb01.ora
+
+
+run {
+    allocate channel ch1 device type disk;
+    allocate channel ch2 device type disk;
+    allocate channel ch3 device type disk;
+    allocate channel ch4 device type disk;
+
+    allocate auxiliary channel aux1 device type disk;
+    allocate auxiliary channel aux2 device type disk;
+    allocate auxiliary channel aux3 device type disk;
+    allocate auxiliary channel aux4 device type disk;
+
+    duplicate target database for standby
+        from active database
+        dorecover
+        section size 100m
+        db_file_name_convert '/DB01_PRIM/','/DB01_STDBY/'
+        noresume;
+}
+

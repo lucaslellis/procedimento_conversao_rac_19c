@@ -1,0 +1,3 @@
+{
+    "pandoc.htmlOptString": "--shift-heading-level-by=-1 -F pandoc-crossref -f markdown --embed-resources --standalone -N --toc --highlight-style kate -t html5 --css=\"template.css\" --template template.html"
+}
