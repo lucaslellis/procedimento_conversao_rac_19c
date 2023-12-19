@@ -337,8 +337,8 @@ Resultado:
 2023/12/18 16:54:07 CLSRSC-325: Configure Oracle Grid Infrastructure for a Cluster ... succeeded
 ```
 
-Como o gridSetup.sh foi executado com a opção `oracle.install.option=CRS_CONFIG`, não é necessário
-executar o trecho abaixo após o `root.sh`:
+Insira as senhas no responseFile gerado pelo gridSetup.sh (exemplo: `/u01/app/19.21/grid/install/response/grid_2023-12-18_04-35-03PM.rsp`)
+e execute com o usuário oracle (ou grid, caso faça a separação):
 
 ```{.default .numberLines}
 As install user, execute the following command to complete the configuration.
