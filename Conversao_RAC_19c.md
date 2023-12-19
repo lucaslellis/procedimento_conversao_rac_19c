@@ -128,7 +128,14 @@ Resultado:
 Executar com o usuário oracle (ou grid, caso faça a separação):
 
 ```{.bash .numberLines}
-/u01/app/19.21/grid/oui/bin/runInstaller -waitforcompletion -silent -local -detachHome CRS=false ORACLE_HOME="/u01/app/19.21/grid" INVENTORY_LOCATION=/u01/app/oraInventory
+/u01/app/19.21/grid/oui/bin/runInstaller \
+  -waitforcompletion                     \
+  -silent                                \
+  -local                                 \
+  -detachHome                            \
+    CRS=false                            \
+    ORACLE_HOME="/u01/app/19.21/grid"    \
+    INVENTORY_LOCATION=/u01/app/oraInventory
 ```
 
 Resultado:
@@ -674,12 +681,39 @@ find $GRID_HOME -name '*.ouibak*' -delete
 rm -f /etc/oracle/ocr.loc
 ```
 
+### Relink dos binários do Grid Infrastructure - Nó 1
+
+Executar com o usuário oracle (ou grid, caso faça a separação):
+
+```{.bash .numberLines}
+export ORACLE_HOME=/u01/app/19.21/grid
+cd $ORACLE_HOME/rdbms/lib
+make -f ins_rdbms.mk dnfs_on rac_on ioracle ORACLE_HOME=$ORACLE_HOME
+```
+
 ### Attach do Grid Infrastructure - Nó 1
 
 Executar apenas o comando abaixo com o usuário root:
 
 ```{.bash .numberLines}
 /u01/app/oraInventory/orainstRoot.sh
+```
+
+Executar com o usuário oracle (ou grid, caso faça a separação):
+
+(Caso seja solicitada a execução do `root.sh`, ignore - execute apenas o /u01/app/oraInventory/orainstRoot.sh)
+
+```{.bash .numberLines}
+/u01/app/19.21/grid/oui/bin/runInstaller -waitforcompletion \
+  -silent                                                   \
+  -local                                                    \
+  -attachHome                                               \
+    CRS=true                                                \
+    ORACLE_HOME_NAME=OraGI19Home1                           \
+    ORACLE_HOME="/u01/app/19.21/grid"                       \
+    INVENTORY_LOCATION=/u01/app/oraInventory                \
+    "'CLUSTER_NODES={linux09,linux08}'"                     \
+    LOCAL_NODE=linux08 CRS=TRUE
 ```
 
 ### Instale o RPM do cluvfy
@@ -714,17 +748,40 @@ Executar a adição do nó pelo Grid Infrastructure no nó linux09:
 
 ```{.bash .numberLines}
 export ORACLE_HOME=/u01/app/19.21/grid
-cd $ORACLE_HOME/addnode
 
-./addnode.sh -silent -noCopy -waitforcompletion "CLUSTER_NEW_NODES={linux08}" "CLUSTER_NEW_VIRTUAL_HOSTNAMES={linux08-vip}"
-```
+# Criacao do response file
+cat > ~/grid_add_node.rsp <<ENDEND
+oracle.install.responseFileVersion=/oracle/install/rspfmt_crsinstall_response_schema_v19.0.0
+INVENTORY_LOCATION=/u01/app/oraInventory
+oracle.install.option=CRS_ADDNODE
+ORACLE_BASE=/u01/app/grid
+oracle.install.asm.OSDBA=asmdba
+oracle.install.asm.OSOPER=asmoper
+oracle.install.asm.OSASM=asmadmin
+oracle.install.crs.config.scanType=LOCAL_SCAN
+oracle.install.crs.config.ClusterConfiguration=STANDALONE
+oracle.install.crs.config.configureAsExtendedCluster=false
+oracle.install.crs.config.gpnp.configureGNS=false
+oracle.install.crs.config.clusterNodes='linux08.localdomain:linux08-vip.localdomain'
+oracle.install.crs.configureGIMR=false
+oracle.install.asm.configureGIMRDataDG=false
+oracle.install.crs.config.storageOption=FLEX_ASM_STORAGE
+oracle.install.crs.config.useIPMI=false
+oracle.install.asm.diskGroup.name=OCRVOTE
+oracle.install.asm.configureAFD=true
+oracle.install.crs.configureRHPS=false
+oracle.install.crs.config.ignoreDownNodes=false
+oracle.install.config.managementOption=NONE
+oracle.install.crs.rootconfig.executeRootScript=false
+ENDEND
 
-Copie os seguintes arquivos do nó linux09 para o nó linux08:
+nohup ./gridSetup.sh                          \
+    -silent -responseFile ~/grid_add_node.rsp \
+    -noCopy                                   \
+    -ignorePrereqFailure                      \
+    -waitForCompletion > ~/grid_add_node.log 2>&1 0</dev/null &
 
-```{.bash .numberLines}
-scp -r /u01/app/19.21/grid/gpnp oracle@linux08:/u01/app/19.21/grid/
-scp -r /u01/app/19.21/grid/crs/install/crsconfig_addparams oracle@linux08:/u01/app/19.21/grid/crs/install/
-scp -r /u01/app/19.21/grid/crs/install/crsconfig_params oracle@linux08:/u01/app/19.21/grid/crs/install/
+tail -100f ~/grid_add_node.log
 ```
 
 Executar como root o script de root.sh indicado no nó linux08:
@@ -735,14 +792,10 @@ nohup /u01/app/19.21/grid/root.sh > /tmp/root.log 2>&1 0</dev/null &
 tail -100f /tmp/root.log
 ```
 
-Montar os diskgroups DATA e FRA no nó linux08 (após a primeira montagem, que é manual, as subsequentes serão automáticas):
+Adicionar a instância do ASM ao oratab:
 
 ```{.bash .numberLines}
-. oraenv <<< +ASM2
-sqlplus / as sysasm <<ENDEND
-alter diskgroup data mount;
-alter diskgroup fra mount;
-ENDEND
+echo '+ASM2:/u01/app/19.21/grid:N' >> /etc/oratab
 ```
 
 Executar o comando abaixo no nó linux08:
@@ -756,12 +809,37 @@ $ORACLE_HOME/perl/bin/perl $ORACLE_HOME/clone/bin/clone.pl -detachHome          
 $ORACLE_HOME/perl/bin/perl $ORACLE_HOME/clone/bin/clone.pl -O 'CLUSTER_NODES={linux09,linux08}'  \
   -O LOCAL_NODE=linux08 ORACLE_BASE=$ORACLE_BASE ORACLE_HOME=$ORACLE_HOME                        \
   ORACLE_HOME_NAME=OraDB12Home1 -O -noConfig -waitforcompletion
+
+export ORACLE_BASE=/u01/app/oracle
+export ORACLE_HOME=/u01/app/oracle/product/19.21/db_1
+$ORACLE_HOME/oui/bin/runInstaller \
+  -waitforcompletion                     \
+  -silent                                \
+  -local                                 \
+  -detachHome                            \
+    ORACLE_HOME="${ORACLE_HOME}"    \
+    ORACLE_HOME_NAME=OraDB19Home1 \
+    INVENTORY_LOCATION=/u01/app/oraInventory
+
+$ORACLE_HOME/oui/bin/runInstaller -waitforcompletion \
+  -silent                                                   \
+  -local                                                    \
+  -noconfig \
+  -attachHome                                               \
+    ORACLE_HOME_NAME=OraDB19Home1                           \
+    ORACLE_HOME="${ORACLE_HOME}"                       \
+    INVENTORY_LOCATION=/u01/app/oraInventory                \
+    "'CLUSTER_NODES={linux09,linux08}'"                     \
+    LOCAL_NODE=linux08
 ```
 
-Executar o comando abaixo no nó linux09:
+Executar os comandos abaixo no nó linux09:
 
 ```{.bash .numberLines}
 export ORACLE_HOME=/u01/app/oracle/product/19.21/db_1
+$ORACLE_HOME/oui/bin/runInstaller -updateNodeList ORACLE_HOME=$ORACLE_HOME -O "CLUSTER_NODES={linux09,linux08}"
+
+export ORACLE_HOME=/u01/app/19.21/grid
 $ORACLE_HOME/oui/bin/runInstaller -updateNodeList ORACLE_HOME=$ORACLE_HOME -O "CLUSTER_NODES={linux09,linux08}"
 ```
 
@@ -788,7 +866,7 @@ srvctl add instance -db db02 -instance db021 -node linux08
 echo "db011:$ORACLE_HOME:N" >> /etc/oratab
 echo "db021:$ORACLE_HOME:N" >> /etc/oratab
 
-echo "spfile=+DATA/db02/spfiledb02.ora" > $ORACLE_HOME/dbs/initdb011.ora
+echo "spfile=+DATA/db01_prim/spfiledb01.ora" > $ORACLE_HOME/dbs/initdb011.ora
 echo "spfile=+DATA/db02/spfiledb02.ora" > $ORACLE_HOME/dbs/initdb021.ora
 
 srvctl modify service -db db01_prim -service db01_app.world -modifyconfig -preferred "db011,db012"
@@ -814,9 +892,9 @@ srvctl status service -d db02 -v
 Saída esperada:
 
 ```{.default .numberLines}
-[oracle@linux08 +ASM2 dbs]$ srvctl status service -d db01_prim -v
+[oracle@linux08 db011 lib]$ srvctl status service -d db01_prim -v
 Service db01_app.world is running on instance(s) db011,db012
-[oracle@linux08 +ASM2 dbs]$ srvctl status service -d db02 -v
+[oracle@linux08 db011 lib]$ srvctl status service -d db02 -v
 Service db02_app.world is running on instance(s) db022
-[oracle@linux08 +ASM2 dbs]$
+[oracle@linux08 db011 lib]$
 ```
